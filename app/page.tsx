@@ -72,12 +72,16 @@ export default function HomePage() {
 
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
-        () => {
-          setCurrentLocation("Current Location");
+        (position) => {
+          console.log(position);
+          const { latitude, longitude } = position.coords;
+          setCurrentLocation(
+            `Lat: ${latitude.toFixed(3)}, Lng: ${longitude.toFixed(3)}`,
+          );
 
           const now = new Date();
           const sunset = new Date(now);
-          sunset.setHours(19, 30, 0);
+          sunset.setHours(19, 30, 0); // mock time — ideally replace with actual API call
 
           const goldenHour = new Date(sunset);
           goldenHour.setMinutes(sunset.getMinutes() - 60);
@@ -150,9 +154,7 @@ export default function HomePage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">
-              Sunset Companion
-            </h1>
+            <h1 className="text-2xl font-bold text-gray-900">sunseek</h1>
             <p className="text-sm text-gray-600 flex items-center gap-1">
               <MapPin className="w-4 h-4" />
               {currentLocation}

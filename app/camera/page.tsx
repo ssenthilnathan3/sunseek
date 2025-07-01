@@ -1,8 +1,6 @@
 "use client";
-
-import type React from "react";
-
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,20 +8,43 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Camera,
   ArrowLeft,
-  Upload,
   Star,
   MapPin,
   Calendar,
   Share2,
+  Upload,
 } from "lucide-react";
 import Link from "next/link";
+import { toast } from "sonner";
+import Image from "next/image";
 
 export default function CameraPage() {
+  const router = useRouter();
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [caption, setCaption] = useState("");
   const [rating, setRating] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
+  const [currentStreak, setCurrentStreak] = useState(0);
+  const [hasPostedToday, setHasPostedToday] = useState(false);
+  const [isStreakLoaded, setIsStreakLoaded] = useState(false); // Add loading state
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Fetch streak data on component mount
+  useEffect(() => {
+    const fetchStreakData = async () => {
+      try {
+        const response = await fetch("/api/streak/status");
+        const data = await response.json();
+        setCurrentStreak(data.currentStreak || 0);
+        setHasPostedToday(data.loggedToday || false);
+      } catch (error) {
+        console.error("Failed to fetch streak data:", error);
+      } finally {
+        setIsStreakLoaded(true); // Mark as loaded regardless of success/failure
+      }
+    };
+    fetchStreakData();
+  }, []);
 
   const handleImageCapture = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -37,36 +58,60 @@ export default function CameraPage() {
   };
 
   const handleShare = async () => {
+    if (!capturedImage || rating === 0) return;
+
     setIsUploading(true);
-    // Simulate upload delay
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    try {
+      // 1. Convert base64 image to File
+      const imageBlob = await fetch(capturedImage).then((res) => res.blob());
+      const file = new File([imageBlob], "sunset.jpg", {
+        type: imageBlob.type || "image/jpeg",
+      });
 
-    // Save to local storage for demo
-    const sunsetPost = {
-      id: Date.now(),
-      image: capturedImage,
-      caption,
-      rating,
-      location: "Current Location",
-      timestamp: new Date().toISOString(),
-      user: "You",
-    };
+      const formData = new FormData();
+      formData.append("file", file);
 
-    const existingPosts = JSON.parse(
-      localStorage.getItem("sunsetPosts") || "[]",
-    );
-    localStorage.setItem(
-      "sunsetPosts",
-      JSON.stringify([sunsetPost, ...existingPosts]),
-    );
+      // 2. Upload the image
+      const uploadResponse = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
 
-    setIsUploading(false);
-    setCapturedImage(null);
-    setCaption("");
-    setRating(0);
+      if (!uploadResponse.ok) throw new Error("Image upload failed");
+      const { url: imageUrl } = await uploadResponse.json(); // Vercel Blob returns { url }
 
-    // Show success message
-    alert("Sunset shared with the community! 🌅");
+      // 3. Create the sunset post
+      const postResponse = await fetch("/api/sunsets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          imageUrl,
+          caption,
+          rating,
+          location: "Current Location",
+        }),
+      });
+
+      if (!postResponse.ok) throw new Error("Failed to create post");
+
+      // 4. Increment streak
+      if (!hasPostedToday) {
+        const streakResponse = await fetch("/api/streak/increment", {
+          method: "POST",
+        });
+        const streakData = await streakResponse.json();
+        setCurrentStreak(streakData.count);
+        setHasPostedToday(true);
+      }
+
+      toast.success("Sunset shared with the community! 🌅");
+      router.push("/social");
+    } catch (error) {
+      console.error("Error sharing sunset:", error);
+      toast.error("Failed to share sunset. Please try again.");
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   return (
@@ -124,9 +169,11 @@ export default function CameraPage() {
         ) : (
           <Card>
             <CardContent className="p-0">
-              <img
-                src={capturedImage || "/placeholder.svg"}
+              <Image
+                src={capturedImage}
                 alt="Captured sunset"
+                width={400}
+                height={256}
                 className="w-full h-64 object-cover rounded-t-lg"
               />
             </CardContent>
@@ -180,7 +227,11 @@ export default function CameraPage() {
                       className="p-1"
                     >
                       <Star
-                        className={`w-6 h-6 ${star <= rating ? "fill-yellow-400 text-yellow-400" : "text-gray-300"}`}
+                        className={`w-6 h-6 ${
+                          star <= rating
+                            ? "fill-yellow-400 text-yellow-400"
+                            : "text-gray-300"
+                        }`}
                       />
                     </button>
                   ))}
@@ -222,23 +273,29 @@ export default function CameraPage() {
           </Card>
         )}
 
-        {/* Streak Info */}
-        <Card className="bg-gradient-to-r from-orange-400 to-pink-500 text-white">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-semibold">Sunset Streak</h3>
-                <p className="text-sm opacity-90">
-                  Keep capturing daily sunsets!
-                </p>
+        {/* Streak Card - Only render after data is loaded */}
+        {isStreakLoaded && (
+          <Card className="bg-gradient-to-r from-orange-400 to-pink-500 text-white">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-semibold">Sunset Streak</h3>
+                  <p className="text-sm opacity-90">
+                    {hasPostedToday
+                      ? "You've logged today's sunset!"
+                      : "Capture today's sunset to keep your streak!"}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <div className="text-2xl font-bold">{currentStreak}</div>
+                  <div className="text-xs opacity-90">
+                    {currentStreak === 1 ? "day" : "days"}
+                  </div>
+                </div>
               </div>
-              <div className="text-right">
-                <div className="text-2xl font-bold">7</div>
-                <div className="text-xs opacity-90">days</div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );
