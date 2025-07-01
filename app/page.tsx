@@ -1,103 +1,376 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useState, useEffect } from "react";
+import { useSession, signOut } from "next-auth/react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import {
+  Sun,
+  Flame,
+  MapPin,
+  Bell,
+  Clock,
+  Moon,
+  Sunrise,
+  Navigation,
+  Camera,
+  Star,
+  User,
+  Settings,
+  LogOut,
+} from "lucide-react";
+
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import InstallPrompt from "@/components/install-prompt";
+import UserProfile from "@/components/user-profile";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+
+interface SunsetData {
+  sunset: string;
+  goldenHour: string;
+  blueHour: string;
+  visibility: string;
+}
+
+interface Location {
+  name: string;
+  distance: string;
+  rating: number;
+  reviews: number;
+}
+
+export default function HomePage() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
+
+  const [sunsetData, setSunsetData] = useState<SunsetData | null>(null);
+  const [currentLocation, setCurrentLocation] = useState("Getting location...");
+  const [streak, setStreak] = useState(0);
+  const [totalSunsets, setTotalSunsets] = useState(0);
+  const [showProfile, setShowProfile] = useState(false);
+
+  const [nearbySpots] = useState<Location[]>([
+    { name: "Sunset Beach", distance: "0.8 mi", rating: 4.8, reviews: 124 },
+    { name: "Hilltop Park", distance: "1.2 mi", rating: 4.6, reviews: 89 },
+    { name: "Ocean Pier", distance: "2.1 mi", rating: 4.9, reviews: 203 },
+  ]);
+
+  // Geo + sunset times
+  useEffect(() => {
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch(console.error);
+    }
+
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        () => {
+          setCurrentLocation("Current Location");
+
+          const now = new Date();
+          const sunset = new Date(now);
+          sunset.setHours(19, 30, 0);
+
+          const goldenHour = new Date(sunset);
+          goldenHour.setMinutes(sunset.getMinutes() - 60);
+
+          const blueHour = new Date(sunset);
+          blueHour.setMinutes(sunset.getMinutes() + 30);
+
+          setSunsetData({
+            sunset: sunset.toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+            goldenHour: goldenHour.toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+            blueHour: blueHour.toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+            visibility: "Excellent",
+          });
+        },
+        () => setCurrentLocation("Location unavailable"),
+      );
+    }
+
+    if ("Notification" in window) Notification.requestPermission();
+  }, []);
+
+  // Fetch streak & sunset count
+  useEffect(() => {
+    const fetchUserStats = async () => {
+      try {
+        const res = await fetch("/api/me");
+        const data = await res.json();
+        setStreak(data.streak || 0);
+        setTotalSunsets(data.totalSunsets || 0);
+      } catch (e) {
+        console.error("Failed to fetch user stats", e);
+      }
+    };
+
+    if (status === "authenticated") {
+      fetchUserStats();
+    }
+  }, [status]);
+
+  const scheduleNotification = () => {
+    if ("Notification" in window && Notification.permission === "granted") {
+      setTimeout(() => {
+        new Notification("🌇 Sunset Alert!", {
+          body: "Sunset visible in 45 mins. Time to head out!",
+          icon: "/icon-192x192.png",
+        });
+      }, 1000); // demo
+    }
+  };
+
+  if (status === "loading") return null;
+
+  if (status === "unauthenticated") {
+    router.push("/auth");
+    return null;
+  }
+
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+    <div className="min-h-screen bg-gradient-to-b from-orange-50 to-purple-50 p-4">
+      <div className="max-w-md mx-auto space-y-4">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">
+              Sunset Companion
+            </h1>
+            <p className="text-sm text-gray-600 flex items-center gap-1">
+              <MapPin className="w-4 h-4" />
+              {currentLocation}
+            </p>
+          </div>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary" className="flex items-center gap-1">
+              <Flame className="w-3 h-3" />
+              {streak} day streak
+            </Badge>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="flex items-center gap-2">
+                  <Avatar className="w-8 h-8">
+                    <AvatarImage
+                      src={session?.user?.image || "/placeholder.svg"}
+                    />
+                    <AvatarFallback>
+                      {session?.user?.name
+                        ?.split(" ")
+                        .map((n) => n[0])
+                        .join("")}
+                    </AvatarFallback>
+                  </Avatar>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onClick={() => setShowProfile(true)}>
+                  <User className="w-4 h-4 mr-2" />
+                  View Profile
+                </DropdownMenuItem>
+                <DropdownMenuItem>
+                  <Settings className="w-4 h-4 mr-2" />
+                  Settings
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => signOut({ callbackUrl: "/auth" })}
+                  className="text-red-600"
+                >
+                  <LogOut className="w-4 h-4 mr-2" />
+                  Sign Out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+
+        {/* Sunset Info */}
+        <Card className="bg-gradient-to-r from-orange-400 to-pink-500 text-white">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Sun className="w-5 h-5" />
+              Today's Golden Hour
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {sunsetData ? (
+              <>
+                <div className="grid grid-cols-3 gap-4 text-center">
+                  <div>
+                    <Sunrise className="mx-auto mb-1" />
+                    <p className="text-xs">Golden Hour</p>
+                    <p className="font-semibold">{sunsetData.goldenHour}</p>
+                  </div>
+                  <div>
+                    <Sun className="mx-auto mb-1" />
+                    <p className="text-xs">Sunset</p>
+                    <p className="font-semibold">{sunsetData.sunset}</p>
+                  </div>
+                  <div>
+                    <Moon className="mx-auto mb-1" />
+                    <p className="text-xs">Blue Hour</p>
+                    <p className="font-semibold">{sunsetData.blueHour}</p>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm">
+                    Visibility: {sunsetData.visibility}
+                  </span>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={scheduleNotification}
+                  >
+                    <Bell className="w-3 h-3 mr-1" />
+                    Notify Me
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-4">
+                <Clock className="w-8 h-8 mx-auto mb-2 animate-spin" />
+                <p>Loading sunset data...</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Actions */}
+        <div className="grid grid-cols-2 gap-3">
+          <Link href="/map">
+            <Button className="w-full h-16 flex flex-col items-center gap-1">
+              <Navigation className="w-5 h-5" />
+              <span className="text-xs">Find Spots</span>
+            </Button>
+          </Link>
+          <Link href="/camera">
+            <Button
+              variant="outline"
+              className="w-full h-16 flex flex-col items-center gap-1"
+            >
+              <Camera className="w-5 h-5" />
+              <span className="text-xs">Capture</span>
+            </Button>
+          </Link>
+        </div>
+
+        {/* Nearby Spots */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Nearby Sunset Spots</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {nearbySpots.map((spot, idx) => (
+              <div
+                key={idx}
+                className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+              >
+                <div>
+                  <h3 className="font-medium">{spot.name}</h3>
+                  <p className="text-sm text-gray-600">{spot.distance} away</p>
+                </div>
+                <div className="text-right">
+                  <div className="flex items-center gap-1">
+                    <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                    <span className="font-medium">{spot.rating}</span>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    {spot.reviews} reviews
+                  </p>
+                </div>
+              </div>
+            ))}
+            <Link href="/map">
+              <Button variant="outline" className="w-full bg-transparent">
+                View All Spots
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+
+        {/* Community Feed */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Sunset Lover's Network</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {/* Mock activity */}
+            <div className="flex items-start gap-3">
+              <Avatar className="w-8 h-8">
+                <AvatarImage src="/placeholder-user.jpg" />
+                <AvatarFallback>JD</AvatarFallback>
+              </Avatar>
+              <div className="flex-1">
+                <p className="text-sm">
+                  <strong>John</strong> shared a sunset at Hilltop Park
+                </p>
+                <p className="text-xs text-gray-500">2 hours ago</p>
+              </div>
+            </div>
+            <Link href="/social">
+              <Button variant="outline" className="w-full bg-transparent">
+                View Community Feed
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+
+        {/* Bottom nav */}
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t p-4">
+          <div className="max-w-md mx-auto flex justify-around">
+            <Link
+              href="/"
+              className="flex flex-col items-center gap-1 text-orange-500"
+            >
+              <Sun className="w-5 h-5" />
+              <span className="text-xs">Home</span>
+            </Link>
+            <Link
+              href="/map"
+              className="flex flex-col items-center gap-1 text-gray-400"
+            >
+              <MapPin className="w-5 h-5" />
+              <span className="text-xs">Map</span>
+            </Link>
+            <Link
+              href="/camera"
+              className="flex flex-col items-center gap-1 text-gray-400"
+            >
+              <Camera className="w-5 h-5" />
+              <span className="text-xs">Camera</span>
+            </Link>
+            <Link
+              href="/social"
+              className="flex flex-col items-center gap-1 text-gray-400"
+            >
+              <Star className="w-5 h-5" />
+              <span className="text-xs">Social</span>
+            </Link>
+          </div>
+        </div>
+
+        <InstallPrompt />
+        {showProfile && <UserProfile onClose={() => setShowProfile(false)} />}
+      </div>
     </div>
   );
 }
